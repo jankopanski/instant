@@ -12,6 +12,7 @@ import Data.List
 import Control.Monad
 import Control.Monad.Except
 import System.FilePath --(takeDirectory, takeBaseName)
+import System.Process (callCommand)
 
 import ErrM
 
@@ -34,6 +35,7 @@ run v f s = let ts = myLexer s in case pProgram ts of
                           showTree v tree
                           code <- compile tree f
                           generateJFile f code
+                          generateClassFile f
                           exitSuccess
 
 showTree :: (Show a, Print a) => Int -> a -> IO ()
@@ -66,7 +68,7 @@ main = do
 type Instruction = String
 
 generateCode :: [Instruction] -> FilePath -> Int -> Int -> [Instruction]
-generateCode ins name stack locals = [".class  public " ++ name] ++ beginning ++
+generateCode ins name stack locals = [".class public " ++ name] ++ beginning ++
   [".limit stack " ++ show stack, ".limit locals " ++ show locals] ++ ins ++ ending
   where
     beginning = [".super java/lang/Object", "", ".method public <init>()V",
@@ -77,12 +79,16 @@ generateCode ins name stack locals = [".class  public " ++ name] ++ beginning ++
 generateJFile :: FilePath -> [Instruction] -> IO ()
 generateJFile file code = writeFile (replaceExtension file "j") (unlines code)
 
+generateClassFile :: FilePath -> IO ()
+generateClassFile file = callCommand $ "java -jar lib/jasmin.jar -d " ++
+  takeDirectory file ++ " " ++ replaceExtension file "j"
+
 compile :: Program -> FilePath -> IO [Instruction]
 -- compile program = mapM_ print (compileProgram program)
 compile program filename =
   case runExcept $ compileProgram program of
     Left err -> putStrLn err >> exitFailure
-    Right (ins, vars, stack) -> return $ generateCode ins (takeBaseName filename) stack (length vars)
+    Right (ins, vars, stack) -> return $ generateCode ins (takeBaseName filename) stack (length vars + 1)
       -- do
       -- putStrLn ""
       -- mapM_ putStrLn ins
@@ -140,7 +146,7 @@ compileExpr (ExpAdd exp1 exp2) vars = do
 compileExpr (ExpSub exp1 exp2) vars = do
   (ins1, m1) <- compileExpr exp1 vars
   (ins2, m2) <- compileExpr exp2 vars
-  return $ if m1 > m2
+  return $ if m1 >= m2
     then (ins1 ++ ins2 ++ ["isub"], m2 + 1)
     else (ins2 ++ ins1 ++ ["swap", "isub"], m1 + 1)
   -- return (ins1 ++ ins2 ++ ["isub"])
@@ -148,14 +154,14 @@ compileExpr (ExpSub exp1 exp2) vars = do
 compileExpr (ExpMul exp1 exp2) vars = do
   (ins1, m1) <- compileExpr exp1 vars
   (ins2, m2) <- compileExpr exp2 vars
-  return $ if m1 > m2
+  return $ if m1 >= m2
     then (ins1 ++ ins2 ++ ["imul"], m2 + 1)
     else (ins2 ++ ins1 ++ ["imul"], m1 + 1)
 
 compileExpr (ExpDiv exp1 exp2) vars = do
   (ins1, m1) <- compileExpr exp1 vars
   (ins2, m2) <- compileExpr exp2 vars
-  return $ if m1 > m2
+  return $ if m1 >= m2
     then (ins1 ++ ins2 ++ ["idiv"], m2 + 1)
     else (ins2 ++ ins1 ++ ["swap", "idiv"], m1 + 1)
 
