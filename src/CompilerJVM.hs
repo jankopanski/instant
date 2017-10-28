@@ -73,12 +73,37 @@ max3 a b c = max a $ max b c
 -- data Instruction = Expr String | Ass String String deriving (Eq, Show)
 type Instruction = String
 
-compile :: Program -> IO ()
-compile program = mapM_ print (compileProgram program)
+generateCode :: [Instruction] -> String -> Int -> Int -> [Instruction]
+generateCode ins name stack locals = [".class  public " ++ name] ++ beginning ++
+  [".limit stack " ++ show stack, ".limit locals " ++ show locals] ++ ins ++ ending
+  where
+    beginning = [".super java/lang/Object", "", ".method public <init>()V",
+      "aload_0", "invokespecial java/lang/Object/<init>()V", "return",
+      ".end method", "", ".method public static main([Ljava/lang/String;)V"]
+    ending = ["return", ".end method"]
 
-compileProgram :: Program -> Except String [[Instruction]] -- zmianić typ na listę
+compile :: Program -> IO ()
+-- compile program = mapM_ print (compileProgram program)
+compile p =
+  case runExcept $ compileProgram p of
+    Left err -> putStrLn err >> exitFailure
+    Right (ins, vars, stack) -> do
+      putStrLn ""
+      mapM_ putStrLn ins
+      print vars
+      print stack
+      exitFailure
+
+
+compileProgram :: Program -> Except String ([Instruction], [String], Int) -- zmianić typ na listę
 -- compileProgram (Prog stmts) = mapM compileStmt stmts
-compileProgram (Prog stmts) = return [["ala"]]
+-- compileProgram (Prog stmts) = return ["ala"]
+compileProgram (Prog stmts) = foldM compileStmtFold ([], [], 0) stmts
+  where
+    compileStmtFold :: ([Instruction], [String], Int) -> Stmt -> Except String ([Instruction], [String], Int)
+    compileStmtFold (ins, vars, m) stmt = do
+      (ins', vars', m') <- compileStmt stmt vars
+      return (ins ++ ins', vars', max m m')
 
 -- compileStmt :: Stmt -> Except String [Instruction]
 compileStmt :: Stmt -> [String] -> Except String ([Instruction], [String], Int)
@@ -102,7 +127,6 @@ compileStmt (SAss (Ident name) expr) vars = do
     Just index -> (ins ++ [istore index], vars, m)
     where
       istore index = "istore" ++ if index <= 3 then "_" else " " ++ show index
-
 
 -- compileExpr :: Exp -> Except String [Instruction]
 compileExpr :: Exp -> [String] -> Except String ([Instruction], Int)
