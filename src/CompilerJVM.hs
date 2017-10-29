@@ -88,7 +88,9 @@ compile :: Program -> FilePath -> IO [Instruction]
 compile program filename =
   case runExcept $ compileProgram program of
     Left err -> putStrLn err >> exitFailure
-    Right (ins, vars, stack) -> return $ generateCode ins (takeBaseName filename) stack (length vars + 1)
+    Right (ins, vars, stack) -> do
+      putStrLn "Compile Successful"
+      return $ generateCode ins (takeBaseName filename) stack (length vars + 1)
       -- do
       -- putStrLn ""
       -- mapM_ putStrLn ins
@@ -113,11 +115,16 @@ compileStmt :: Stmt -> [String] -> Except String ([Instruction], [String], Int)
 -- compileStmt (SExp expr) = [show expr]
 -- compileStmt (SExp expr) = compileExpr expr [""] -- TODO
 -- compileStmt (SExp expr) vars = compileExpr expr vars >>= \(ins, m) -> return (ins, vars, m)
+
 compileStmt (SExp expr) vars = do
   (ins, m) <- compileExpr expr vars
   let ins' = ["getstatic java/lang/System/out Ljava/io/PrintStream;"] ++ ins
           ++ ["invokevirtual java/io/PrintStream/println(I)V"]
   return (ins', vars, m + 1)
+
+-- compileStmt (SExp expr) vars = do
+--   (ins, m) <- compileExpr expr vars
+--   return (ins, vars, m)
 
 -- compileStmt (SAss (Ident name) expr) = [Ass name (show expr)]
 -- compileStmt (SAss (Ident name) expr) = [(show expr)]
@@ -128,7 +135,7 @@ compileStmt (SAss (Ident name) expr) vars = do
     Nothing -> (ins ++ [istore $ length vars], vars ++ [name], m)
     Just index -> (ins ++ [istore index], vars, m)
     where
-      istore index = "istore" ++ if index <= 3 then "_" else " " ++ show index
+      istore index = "istore" ++ (if index <= 3 then "_" else " ") ++ show index
 
 -- compileExpr :: Exp -> Except String [Instruction]
 compileExpr :: Exp -> [String] -> Except String ([Instruction], Int)
@@ -136,8 +143,8 @@ compileExpr (ExpAdd exp1 exp2) vars = do
   (ins1, m1) <- compileExpr exp1 vars
   (ins2, m2) <- compileExpr exp2 vars
   return $ if m1 > m2
-    then (ins1 ++ ins2 ++ ["iadd"], m2 + 1)
-    else (ins2 ++ ins1 ++ ["iadd"], m1 + 1)
+    then (ins1 ++ ins2 ++ ["iadd"], max m1 (m2 + 1))
+    else (ins2 ++ ins1 ++ ["iadd"], max m2 (m1 + 1))
   -- return ((if s1 + m1 > m2 then ins1 ++ ins2 else ins2 ++ ins1) ++ ["iadd"], 1, max3 m1 m2 (s1 + s2))
   -- return $ if max1 > max2 then (ins1 ++ ins2 ++ ["iadd"], 1, 1) else (ins2 ++ ins1 ++ ["iadd"], 1, 1)
   -- return (ins2 ++ ins1 ++ ["iadd"])
@@ -147,23 +154,23 @@ compileExpr (ExpSub exp1 exp2) vars = do
   (ins1, m1) <- compileExpr exp1 vars
   (ins2, m2) <- compileExpr exp2 vars
   return $ if m1 >= m2
-    then (ins1 ++ ins2 ++ ["isub"], m2 + 1)
-    else (ins2 ++ ins1 ++ ["swap", "isub"], m1 + 1)
+    then (ins1 ++ ins2 ++ ["isub"], max m1 (m2 + 1))
+    else (ins2 ++ ins1 ++ ["swap", "isub"], max m2 (m1 + 1))
   -- return (ins1 ++ ins2 ++ ["isub"])
 
 compileExpr (ExpMul exp1 exp2) vars = do
   (ins1, m1) <- compileExpr exp1 vars
   (ins2, m2) <- compileExpr exp2 vars
   return $ if m1 >= m2
-    then (ins1 ++ ins2 ++ ["imul"], m2 + 1)
-    else (ins2 ++ ins1 ++ ["imul"], m1 + 1)
+    then (ins1 ++ ins2 ++ ["imul"], max m1 (m2 + 1))
+    else (ins2 ++ ins1 ++ ["imul"], max m2 (m1 + 1))
 
 compileExpr (ExpDiv exp1 exp2) vars = do
   (ins1, m1) <- compileExpr exp1 vars
   (ins2, m2) <- compileExpr exp2 vars
   return $ if m1 >= m2
-    then (ins1 ++ ins2 ++ ["idiv"], m2 + 1)
-    else (ins2 ++ ins1 ++ ["swap", "idiv"], m1 + 1)
+    then (ins1 ++ ins2 ++ ["idiv"], max m1 (m2 + 1))
+    else (ins2 ++ ins1 ++ ["swap", "idiv"], max m2 (m1 + 1))
 
 compileExpr (ExpLit n) _
   | n < 0 = throwError "Invalid number"
@@ -175,4 +182,4 @@ compileExpr (ExpLit n) _
 compileExpr (ExpVar (Ident name)) vars =
   case elemIndex name vars of
     Nothing -> throwError ("Reference to undefined variable: " ++ name)
-    Just index -> return (["iload" ++ if index <= 3 then "_" else " " ++ show index], 1)
+    Just index -> return (["iload" ++ (if index <= 3 then "_" else " ") ++ show index], 1)
