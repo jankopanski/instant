@@ -63,8 +63,6 @@ main = do
     "-v":fs -> mapM_ (runFile 2) fs
     fs -> mapM_ (runFile 0) fs
 
--- type State = Map.Map String Integer
--- data Instruction = Expr String | Ass String String deriving (Eq, Show)
 type Instruction = String
 
 generateCode :: [Instruction] -> FilePath -> Int -> Int -> [Instruction]
@@ -84,24 +82,15 @@ generateClassFile file = callCommand $ "java -jar lib/jasmin.jar -d " ++
   takeDirectory file ++ " " ++ replaceExtension file "j"
 
 compile :: Program -> FilePath -> IO [Instruction]
--- compile program = mapM_ print (compileProgram program)
 compile program filename =
   case runExcept $ compileProgram program of
     Left err -> putStrLn err >> exitFailure
     Right (ins, vars, stack) -> do
       putStrLn "Compile Successful"
       return $ generateCode ins (takeBaseName filename) stack (length vars + 1)
-      -- do
-      -- putStrLn ""
-      -- mapM_ putStrLn ins
-      -- print vars
-      -- print stack
-      -- exitFailure
 
 
-compileProgram :: Program -> Except String ([Instruction], [String], Int) -- zmianić typ na listę
--- compileProgram (Prog stmts) = mapM compileStmt stmts
--- compileProgram (Prog stmts) = return ["ala"]
+compileProgram :: Program -> Except String ([Instruction], [String], Int)
 compileProgram (Prog stmts) = foldM compileStmtFold ([], [], 0) stmts
   where
     compileStmtFold :: ([Instruction], [String], Int) -> Stmt -> Except String ([Instruction], [String], Int)
@@ -109,12 +98,7 @@ compileProgram (Prog stmts) = foldM compileStmtFold ([], [], 0) stmts
       (ins', vars', m') <- compileStmt stmt vars
       return (ins ++ ins', vars', max m m')
 
--- compileStmt :: Stmt -> Except String [Instruction]
 compileStmt :: Stmt -> [String] -> Except String ([Instruction], [String], Int)
--- compileStmt (SExp expr) = [Exp $ show expr]
--- compileStmt (SExp expr) = [show expr]
--- compileStmt (SExp expr) = compileExpr expr [""] -- TODO
--- compileStmt (SExp expr) vars = compileExpr expr vars >>= \(ins, m) -> return (ins, vars, m)
 
 compileStmt (SExp expr) vars = do
   (ins, m) <- compileExpr expr vars
@@ -122,13 +106,6 @@ compileStmt (SExp expr) vars = do
           ++ ["invokevirtual java/io/PrintStream/println(I)V"]
   return (ins', vars, m + 1)
 
--- compileStmt (SExp expr) vars = do
---   (ins, m) <- compileExpr expr vars
---   return (ins, vars, m)
-
--- compileStmt (SAss (Ident name) expr) = [Ass name (show expr)]
--- compileStmt (SAss (Ident name) expr) = [(show expr)]
--- compileStmt (SAss (Ident name) expr) = return ([name], 0)
 compileStmt (SAss (Ident name) expr) vars = do
   (ins, m) <- compileExpr expr vars
   return $ case elemIndex name vars of
@@ -137,7 +114,6 @@ compileStmt (SAss (Ident name) expr) vars = do
     where
       istore index = "istore" ++ (if index <= 3 then "_" else " ") ++ show index
 
--- compileExpr :: Exp -> Except String [Instruction]
 compileExpr :: Exp -> [String] -> Except String ([Instruction], Int)
 compileExpr (ExpAdd exp1 exp2) vars = do
   (ins1, m1) <- compileExpr exp1 vars
@@ -145,10 +121,6 @@ compileExpr (ExpAdd exp1 exp2) vars = do
   return $ if m1 > m2
     then (ins1 ++ ins2 ++ ["iadd"], max m1 (m2 + 1))
     else (ins2 ++ ins1 ++ ["iadd"], max m2 (m1 + 1))
-  -- return ((if s1 + m1 > m2 then ins1 ++ ins2 else ins2 ++ ins1) ++ ["iadd"], 1, max3 m1 m2 (s1 + s2))
-  -- return $ if max1 > max2 then (ins1 ++ ins2 ++ ["iadd"], 1, 1) else (ins2 ++ ins1 ++ ["iadd"], 1, 1)
-  -- return (ins2 ++ ins1 ++ ["iadd"])
--- compileExpr exp2 >>= \ins2 -> compileExpr exp1 >>= \ins1 -> return (ins2 ++ ins1)
 
 compileExpr (ExpSub exp1 exp2) vars = do
   (ins1, m1) <- compileExpr exp1 vars
@@ -156,7 +128,6 @@ compileExpr (ExpSub exp1 exp2) vars = do
   return $ if m1 >= m2
     then (ins1 ++ ins2 ++ ["isub"], max m1 (m2 + 1))
     else (ins2 ++ ins1 ++ ["swap", "isub"], max m2 (m1 + 1))
-  -- return (ins1 ++ ins2 ++ ["isub"])
 
 compileExpr (ExpMul exp1 exp2) vars = do
   (ins1, m1) <- compileExpr exp1 vars
