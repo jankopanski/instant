@@ -102,9 +102,9 @@ compileStmt :: Stmt -> [String] -> Except String ([Instruction], [String], Int)
 
 compileStmt (SExp expr) vars = do
   (ins, m) <- compileExpr expr vars
-  let ins' = ["getstatic java/lang/System/out Ljava/io/PrintStream;"] ++ ins
-          ++ ["invokevirtual java/io/PrintStream/println(I)V"]
-  return (ins', vars, m + 1)
+  let ins' = ins ++ ["getstatic java/lang/System/out Ljava/io/PrintStream;",
+                    "swap", "invokevirtual java/io/PrintStream/println(I)V"]
+  return (ins', vars, max m 2)
 
 compileStmt (SAss (Ident name) expr) vars = do
   (ins, m) <- compileExpr expr vars
