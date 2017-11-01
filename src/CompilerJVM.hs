@@ -3,20 +3,23 @@ module Main where
 
 import System.Environment ( getArgs )
 import System.Exit ( exitFailure, exitSuccess )
+import System.FilePath --(takeDirectory, takeBaseName)
+import System.Process (callCommand)
+
+import Data.List
+import Control.Monad
+import Control.Monad.Except
 
 import ParInstant
 import PrintInstant
 import AbsInstant
 
-import Data.List
-import Control.Monad
-import Control.Monad.Except
-import System.FilePath --(takeDirectory, takeBaseName)
-import System.Process (callCommand)
-
 import ErrM
 
+
 type Verbosity = Int
+type Instructions = [String]
+type Variables = [String]
 
 putStrV :: Verbosity -> String -> IO ()
 putStrV v s = when (v > 1) $ putStrLn s
@@ -63,9 +66,9 @@ main = do
     "-v":fs -> mapM_ (runFile 2) fs
     fs -> mapM_ (runFile 0) fs
 
-type Instruction = String
+-- type Instruction = String
 
-generateCode :: [Instruction] -> FilePath -> Int -> Int -> [Instruction]
+generateCode :: Instructions -> FilePath -> Int -> Int -> Instructions
 generateCode ins name stack locals = [".class public " ++ name] ++ beginning ++
   [".limit stack " ++ show stack, ".limit locals " ++ show locals] ++ ins ++ ending
   where
@@ -74,14 +77,14 @@ generateCode ins name stack locals = [".class public " ++ name] ++ beginning ++
       ".end method", "", ".method public static main([Ljava/lang/String;)V"]
     ending = ["return", ".end method"]
 
-generateJFile :: FilePath -> [Instruction] -> IO ()
+generateJFile :: FilePath -> Instructions -> IO ()
 generateJFile file code = writeFile (replaceExtension file "j") (unlines code)
 
 generateClassFile :: FilePath -> IO ()
 generateClassFile file = callCommand $ "java -jar lib/jasmin.jar -d " ++
   takeDirectory file ++ " " ++ replaceExtension file "j"
 
-compile :: Program -> FilePath -> IO [Instruction]
+compile :: Program -> FilePath -> IO Instructions
 compile program filename =
   case runExcept $ compileProgram program of
     Left err -> putStrLn err >> exitFailure
@@ -90,15 +93,16 @@ compile program filename =
       return $ generateCode ins (takeBaseName filename) stack (length vars + 1)
 
 
-compileProgram :: Program -> Except String ([Instruction], [String], Int)
+compileProgram :: Program -> Except String (Instructions, Variables, Int)
 compileProgram (Prog stmts) = foldM compileStmtFold ([], [], 0) stmts
   where
-    compileStmtFold :: ([Instruction], [String], Int) -> Stmt -> Except String ([Instruction], [String], Int)
+    compileStmtFold :: (Instructions, Variables, Int) -> Stmt ->
+                        Except String (Instructions, Variables, Int)
     compileStmtFold (ins, vars, m) stmt = do
       (ins', vars', m') <- compileStmt stmt vars
       return (ins ++ ins', vars', max m m')
 
-compileStmt :: Stmt -> [String] -> Except String ([Instruction], [String], Int)
+compileStmt :: Stmt -> Variables -> Except String (Instructions, Variables, Int)
 
 compileStmt (SExp expr) vars = do
   (ins, m) <- compileExpr expr vars
@@ -114,7 +118,7 @@ compileStmt (SAss (Ident name) expr) vars = do
     where
       istore index = "istore" ++ (if index <= 3 then "_" else " ") ++ show index
 
-compileExpr :: Exp -> [String] -> Except String ([Instruction], Int)
+compileExpr :: Exp -> Variables -> Except String (Instructions, Int)
 compileExpr (ExpAdd exp1 exp2) vars = do
   (ins1, m1) <- compileExpr exp1 vars
   (ins2, m2) <- compileExpr exp2 vars
