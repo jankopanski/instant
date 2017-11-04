@@ -77,6 +77,54 @@ instance Show Address where
   show (Register i) = '%' : show i
   show (Immediate i) = show i
 
+genCode :: [Instruction] -> [Instruction]
+genCode ins = beginning ++ ins ++ ending where
+  beginning = ["@dnl = internal constant [4 x i8] c\"%d\0A\00\"",
+    "declare i32 @printf(i8*, ...)", "define void @printInt(i32 %x) {",
+    "%t0 = getelementptr [4 x i8], [4 x i8]* @dnl, i32 0, i32 0",
+    "call i32 (i8*, ...) @printf(i8* %t0, i32 %x)", "ret void", "}", "",
+    "define i32 @main() {"]
+  ending = ["ret i32 0", "}"]
+
+compile :: Program -> IO [Instruction]
+compile program =
+  case evalState (runExceptT (execWriterT (genProgram program))) (1, Map.empty) of
+    Left err -> putStrLn err >> exitFailure
+    Right ins -> do
+      putStrLn "Compile Successful"
+      return $ genCode ins
+
+genProgram :: Program -> GenM ()
+genProgram (Prog stmts) = mapM_ genStmt stmts
+
+genStmt :: Stmt -> GenM ()
+genStmt (SExp expr) = do
+  addr <- genExp expr
+  emit $ "call void @printInt(i32 " ++ show addr ++ ")"
+
+genStmt (SAss (Ident name) expr) = do
+  src <- genExp expr
+  (n, vars) <- get
+  case Map.lookup name vars of
+    Just dest -> emit $ store src dest
+    Nothing -> do
+      dest <- freshTemp
+      put (n, Map.insert name dest vars)
+      emit $ show dest ++ " alloca i32"
+      emit $ store src dest
+
+genExp :: Exp -> GenM Address
+genExp (ExpLit i) = return $ Immediate i
+genExp (ExpAdd exp1 exp2) = genBinOp "add" exp1 exp2
+genExp (ExpSub exp1 exp2) = genBinOp "sub" exp1 exp2
+genExp (ExpMul exp1 exp2) = genBinOp "mul" exp1 exp2
+genExp (ExpDiv exp1 exp2) = genBinOp "div" exp1 exp2
+genExp (ExpVar (Ident name)) = do
+  addr <- getAddr name
+  temp <- freshTemp
+  emit $ load temp addr
+  return temp
+
 freshTemp :: GenM Address
 freshTemp = do
   (n, v) <- get
@@ -110,32 +158,4 @@ genBinOp op exp1 exp2 = do
   addr2 <- genExp exp2
   temp <- freshTemp
   emit $ iBinOp temp op addr1 addr2
-  return temp
-
-genStmt :: Stmt -> GenM ()
-genStmt (SExp expr) = do
-  addr <- genExp expr
-  emit $ "call void @printInt(i32 " ++ show addr ++ ")"
-
-genStmt (SAss (Ident name) expr) = do
-  src <- genExp expr
-  (n, vars) <- get
-  case Map.lookup name vars of
-    Just dest -> emit $ store src dest
-    Nothing -> do
-      dest <- freshTemp
-      put (n, Map.insert name dest vars)
-      emit $ show dest ++ " alloca i32"
-      emit $ store src dest
-
-genExp :: Exp -> GenM Address
-genExp (ExpLit i) = return $ Immediate i
-genExp (ExpAdd exp1 exp2) = genBinOp "add" exp1 exp2
-genExp (ExpSub exp1 exp2) = genBinOp "sub" exp1 exp2
-genExp (ExpMul exp1 exp2) = genBinOp "mul" exp1 exp2
-genExp (ExpDiv exp1 exp2) = genBinOp "div" exp1 exp2
-genExp (ExpVar (Ident name)) = do
-  addr <- getAddr name
-  temp <- freshTemp
-  emit $ load temp addr
   return temp
