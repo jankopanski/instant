@@ -38,9 +38,9 @@ run v f s = let ts = myLexer s in case pProgram ts of
                           exitFailure
            Ok  tree -> do putStrLn "\nParse Successful!"
                           showTree v tree
-                          -- code <- compile tree f
-                          -- generateJFile f code
-                          -- generateClassFile f
+                          code <- compile tree
+                          generateLLFile f code
+                          generateByteCodeFile f
                           exitSuccess
 
 showTree :: (Show a, Print a) => Int -> a -> IO ()
@@ -76,6 +76,12 @@ type Operation = String
 instance Show Address where
   show (Register i) = '%' : show i
   show (Immediate i) = show i
+
+generateLLFile :: FilePath -> [Instruction] -> IO ()
+generateLLFile file code = writeFile (replaceExtension file "ll") (unlines code)
+
+generateByteCodeFile :: FilePath -> IO ()
+generateByteCodeFile file = callCommand $ "llvm-as " ++ replaceExtension file "ll"
 
 genCode :: [Instruction] -> [Instruction]
 genCode ins = beginning ++ ins ++ ending where

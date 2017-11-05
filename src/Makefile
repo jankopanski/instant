@@ -1,6 +1,6 @@
 PARSER_SRC = AbsInstant.hs ErrM.hs LexInstant.hs ParInstant.hs PrintInstant.hs SkelInstant.hs
 
-all: jvm
+all: jvm llvm
 
 jvm: $(PARSER_SRC) CompilerJVM.hs
 	ghc -o insc_jvm CompilerJVM.hs
