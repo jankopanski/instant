@@ -3,11 +3,10 @@ module Main where
 
 import System.Environment ( getArgs )
 import System.Exit ( exitFailure, exitSuccess )
-import System.FilePath --(takeDirectory, takeBaseName)
+import System.FilePath (takeDirectory, takeBaseName, replaceExtension)
 import System.Process (callCommand)
 
-import Data.List
-import Control.Monad
+import Data.List (elemIndex)
 import Control.Monad.Except
 
 import ParInstant
@@ -18,7 +17,7 @@ import ErrM
 
 
 type Verbosity = Int
-type Instructions = [String]
+type Instruction = String
 type Variables = [String]
 
 putStrV :: Verbosity -> String -> IO ()
@@ -29,12 +28,12 @@ runFile v f = putStrLn f >> readFile f >>= run v f
 
 run :: Verbosity -> FilePath -> String -> IO ()
 run v f s = let ts = myLexer s in case pProgram ts of
-           Bad e    -> do putStrLn "\nParse              Failed...\n"
+           Bad e    -> do putStrLn "Parse Failed...\n"
                           putStrV v "Tokens:"
                           putStrV v $ show ts
                           putStrLn e
                           exitFailure
-           Ok  tree -> do putStrLn "\nParse Successful!"
+           Ok  tree -> do putStrLn "Parse Successful"
                           showTree v tree
                           code <- compile tree f
                           generateJFile f code
@@ -66,9 +65,15 @@ main = do
     "-v":fs -> mapM_ (runFile 2) fs
     fs -> mapM_ (runFile 0) fs
 
--- type Instruction = String
 
-generateCode :: Instructions -> FilePath -> Int -> Int -> Instructions
+generateJFile :: FilePath -> [Instruction] -> IO ()
+generateJFile file code = writeFile (replaceExtension file "j") (unlines code)
+
+generateClassFile :: FilePath -> IO ()
+generateClassFile file = callCommand $ "java -jar lib/jasmin.jar -d " ++
+  takeDirectory file ++ " " ++ replaceExtension file "j"
+
+generateCode :: [Instruction] -> FilePath -> Int -> Int -> [Instruction]
 generateCode ins name stack locals = [".class public " ++ name] ++ beginning ++
   [".limit stack " ++ show stack, ".limit locals " ++ show locals] ++ ins ++ ending
   where
@@ -77,14 +82,7 @@ generateCode ins name stack locals = [".class public " ++ name] ++ beginning ++
       ".end method", "", ".method public static main([Ljava/lang/String;)V"]
     ending = ["return", ".end method"]
 
-generateJFile :: FilePath -> Instructions -> IO ()
-generateJFile file code = writeFile (replaceExtension file "j") (unlines code)
-
-generateClassFile :: FilePath -> IO ()
-generateClassFile file = callCommand $ "java -jar lib/jasmin.jar -d " ++
-  takeDirectory file ++ " " ++ replaceExtension file "j"
-
-compile :: Program -> FilePath -> IO Instructions
+compile :: Program -> FilePath -> IO [Instruction]
 compile program filename =
   case runExcept $ compileProgram program of
     Left err -> putStrLn err >> exitFailure
@@ -93,16 +91,16 @@ compile program filename =
       return $ generateCode ins (takeBaseName filename) stack (length vars + 1)
 
 
-compileProgram :: Program -> Except String (Instructions, Variables, Int)
+compileProgram :: Program -> Except String ([Instruction], Variables, Int)
 compileProgram (Prog stmts) = foldM compileStmtFold ([], [], 0) stmts
   where
-    compileStmtFold :: (Instructions, Variables, Int) -> Stmt ->
-                        Except String (Instructions, Variables, Int)
+    compileStmtFold :: ([Instruction], Variables, Int) -> Stmt ->
+                        Except String ([Instruction], Variables, Int)
     compileStmtFold (ins, vars, m) stmt = do
       (ins', vars', m') <- compileStmt stmt vars
       return (ins ++ ins', vars', max m m')
 
-compileStmt :: Stmt -> Variables -> Except String (Instructions, Variables, Int)
+compileStmt :: Stmt -> Variables -> Except String ([Instruction], Variables, Int)
 
 compileStmt (SExp expr) vars = do
   (ins, m) <- compileExpr expr vars
@@ -118,7 +116,7 @@ compileStmt (SAss (Ident name) expr) vars = do
     where
       istore index = "istore" ++ (if index <= 3 then "_" else " ") ++ show index
 
-compileExpr :: Exp -> Variables -> Except String (Instructions, Int)
+compileExpr :: Exp -> Variables -> Except String ([Instruction], Int)
 compileExpr (ExpAdd exp1 exp2) vars = do
   (ins1, m1) <- compileExpr exp1 vars
   (ins2, m2) <- compileExpr exp2 vars

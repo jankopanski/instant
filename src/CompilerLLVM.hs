@@ -3,10 +3,9 @@ module Main where
 
 import System.Environment ( getArgs )
 import System.Exit ( exitFailure, exitSuccess )
-import System.FilePath --(takeDirectory, takeBaseName)
+import System.FilePath (replaceExtension)
 import System.Process (callCommand)
 
-import Data.List
 import qualified Data.Map as Map
 import Control.Monad.State
 import Control.Monad.Writer
@@ -19,9 +18,16 @@ import AbsInstant
 import ErrM
 
 
+data Address = Register Integer | Immediate Integer
 type Verbosity = Int
-type Instructions = [String]
-type Variables = [String]
+type Instruction = String
+type Operation = String
+type GenM a = WriterT [Instruction] (ExceptT String (State (Integer, Map.Map String Address))) a
+
+instance Show Address where
+  show (Register i) = '%' : show i
+  show (Immediate i) = show i
+
 
 putStrV :: Verbosity -> String -> IO ()
 putStrV v s = when (v > 1) $ putStrLn s
@@ -31,12 +37,12 @@ runFile v f = putStrLn f >> readFile f >>= run v f
 
 run :: Verbosity -> FilePath -> String -> IO ()
 run v f s = let ts = myLexer s in case pProgram ts of
-           Bad e    -> do putStrLn "\nParse              Failed...\n"
+           Bad e    -> do putStrLn "Parse Failed...\n"
                           putStrV v "Tokens:"
                           putStrV v $ show ts
                           putStrLn e
                           exitFailure
-           Ok  tree -> do putStrLn "\nParse Successful!"
+           Ok  tree -> do putStrLn "Parse Successful"
                           showTree v tree
                           code <- compile tree
                           generateLLFile f code
@@ -68,14 +74,6 @@ main = do
     "-v":fs -> mapM_ (runFile 2) fs
     fs -> mapM_ (runFile 0) fs
 
-type GenM a = WriterT [String] (ExceptT String (State (Integer, Map.Map String Address))) a
-data Address = Register Integer | Immediate Integer
-type Instruction = String
-type Operation = String
-
-instance Show Address where
-  show (Register i) = '%' : show i
-  show (Immediate i) = show i
 
 generateLLFile :: FilePath -> [Instruction] -> IO ()
 generateLLFile file code = writeFile (replaceExtension file "ll") (unlines code)
@@ -83,8 +81,8 @@ generateLLFile file code = writeFile (replaceExtension file "ll") (unlines code)
 generateByteCodeFile :: FilePath -> IO ()
 generateByteCodeFile file = callCommand $ "llvm-as " ++ replaceExtension file "ll"
 
-genCode :: [Instruction] -> [Instruction]
-genCode ins = beginning ++ ins ++ ending where
+generateCode :: [Instruction] -> [Instruction]
+generateCode ins = beginning ++ ins ++ ending where
   beginning = ["@dnl = internal constant [4 x i8] c\"%d\\0A\\00\"",
     "declare i32 @printf(i8*, ...)", "define void @printInt(i32 %x) {",
     "%t0 = getelementptr [4 x i8], [4 x i8]* @dnl, i32 0, i32 0",
@@ -98,7 +96,7 @@ compile program =
     Left err -> putStrLn err >> exitFailure
     Right ins -> do
       putStrLn "Compile Successful"
-      return $ genCode ins
+      return $ generateCode ins
 
 genProgram :: Program -> GenM ()
 genProgram (Prog stmts) = mapM_ genStmt stmts
