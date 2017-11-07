@@ -85,7 +85,7 @@ generateByteCodeFile file = callCommand $ "llvm-as " ++ replaceExtension file "l
 
 genCode :: [Instruction] -> [Instruction]
 genCode ins = beginning ++ ins ++ ending where
-  beginning = ["@dnl = internal constant [4 x i8] c\"%d\0A\00\"",
+  beginning = ["@dnl = internal constant [4 x i8] c\"%d\\0A\\00\"",
     "declare i32 @printf(i8*, ...)", "define void @printInt(i32 %x) {",
     "%t0 = getelementptr [4 x i8], [4 x i8]* @dnl, i32 0, i32 0",
     "call i32 (i8*, ...) @printf(i8* %t0, i32 %x)", "ret void", "}", "",
@@ -110,13 +110,14 @@ genStmt (SExp expr) = do
 
 genStmt (SAss (Ident name) expr) = do
   src <- genExp expr
-  (n, vars) <- get
+  (_, vars) <- get
   case Map.lookup name vars of
     Just dest -> emit $ store src dest
     Nothing -> do
       dest <- freshTemp
+      (n, _) <- get
       put (n, Map.insert name dest vars)
-      emit $ show dest ++ " alloca i32"
+      emit $ alloca dest
       emit $ store src dest
 
 genExp :: Exp -> GenM Address
@@ -124,7 +125,7 @@ genExp (ExpLit i) = return $ Immediate i
 genExp (ExpAdd exp1 exp2) = genBinOp "add" exp1 exp2
 genExp (ExpSub exp1 exp2) = genBinOp "sub" exp1 exp2
 genExp (ExpMul exp1 exp2) = genBinOp "mul" exp1 exp2
-genExp (ExpDiv exp1 exp2) = genBinOp "div" exp1 exp2
+genExp (ExpDiv exp1 exp2) = genBinOp "sdiv" exp1 exp2
 genExp (ExpVar (Ident name)) = do
   addr <- getAddr name
   temp <- freshTemp
@@ -150,9 +151,11 @@ load temp addr = show temp ++ " = load i32, i32* " ++ show addr
 store :: Address -> Address -> Instruction
 store src dest = "store i32 " ++ show src ++ ", i32* " ++ show dest
 
+alloca :: Address -> Instruction
+alloca addr = show addr ++ " = alloca i32"
+
 emit :: Instruction -> GenM ()
 emit ins = tell [ins]
--- %1 = sub i32 44, 2
 
 iBinOp :: Address -> Operation -> Address -> Address -> Instruction
 iBinOp temp op addr1 addr2 =

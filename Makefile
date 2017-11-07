@@ -1,7 +1,7 @@
 all:
 	$(MAKE) -C src all
-	mv src/insc_jvm ./
-	mv src/insc_llvm ./
+	cp src/insc_jvm ./
+	cp src/insc_llvm ./
 
 clean:
 	$(MAKE) -C src clean
