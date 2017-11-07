@@ -3,10 +3,11 @@ module Main where
 
 import System.Environment ( getArgs )
 import System.Exit ( exitFailure, exitSuccess )
-import System.FilePath (takeDirectory, takeBaseName, replaceExtension)
-import System.Process (callCommand)
+import System.FilePath ( takeDirectory, takeBaseName, replaceExtension )
+-- import System.Process ( callCommand )
+import System.Process ( runCommand )
 
-import Data.List (elemIndex)
+import Data.List ( elemIndex )
 import Control.Monad.Except
 
 import ParInstant
@@ -38,7 +39,7 @@ run v f s = let ts = myLexer s in case pProgram ts of
                           code <- compile tree f
                           generateJFile f code
                           generateClassFile f
-                          exitSuccess
+                          -- exitSuccess
 
 showTree :: (Show a, Print a) => Int -> a -> IO ()
 showTree v tree
@@ -70,8 +71,12 @@ generateJFile :: FilePath -> [Instruction] -> IO ()
 generateJFile file code = writeFile (replaceExtension file "j") (unlines code)
 
 generateClassFile :: FilePath -> IO ()
-generateClassFile file = callCommand $ "java -jar lib/jasmin.jar -d " ++
-  takeDirectory file ++ " " ++ replaceExtension file "j"
+-- generateClassFile file = callCommand $ "java -jar lib/jasmin.jar -d " ++
+--   takeDirectory file ++ " " ++ replaceExtension file "j"
+generateClassFile file = do
+  _ <- runCommand $ "java -jar lib/jasmin.jar -d " ++
+    takeDirectory file ++ " " ++ replaceExtension file "j"
+  return ()
 
 generateCode :: [Instruction] -> FilePath -> Int -> Int -> [Instruction]
 generateCode ins name stack locals = [".class public " ++ name] ++ beginning ++

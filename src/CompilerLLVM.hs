@@ -3,8 +3,9 @@ module Main where
 
 import System.Environment ( getArgs )
 import System.Exit ( exitFailure, exitSuccess )
-import System.FilePath (replaceExtension)
-import System.Process (callCommand)
+import System.FilePath ( replaceExtension )
+-- import System.Process ( callCommand )
+import System.Process ( runCommand )
 
 import qualified Data.Map as Map
 import Control.Monad.State
@@ -47,7 +48,7 @@ run v f s = let ts = myLexer s in case pProgram ts of
                           code <- compile tree
                           generateLLFile f code
                           generateByteCodeFile f
-                          exitSuccess
+                          -- exitSuccess
 
 showTree :: (Show a, Print a) => Int -> a -> IO ()
 showTree v tree
@@ -79,7 +80,10 @@ generateLLFile :: FilePath -> [Instruction] -> IO ()
 generateLLFile file code = writeFile (replaceExtension file "ll") (unlines code)
 
 generateByteCodeFile :: FilePath -> IO ()
-generateByteCodeFile file = callCommand $ "llvm-as " ++ replaceExtension file "ll"
+-- generateByteCodeFile file = callCommand $ "llvm-as " ++ replaceExtension file "ll"
+generateByteCodeFile file = do
+  _ <- runCommand $ "llvm-as " ++ replaceExtension file "ll"
+  return ()
 
 generateCode :: [Instruction] -> [Instruction]
 generateCode ins = beginning ++ ins ++ ending where
